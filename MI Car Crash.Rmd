@@ -1,0 +1,565 @@
+---
+title: "CS 5610 Car Crash Analysis"
+author: "Mohana Alapati and Will Wood"
+date: "2023-04-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+##**Motivation and Overview:**
+The objective of this project is to analyze car crash data to predict the causes of crashes and fatalities. Car crashes are a significant cause of injuries and deaths globally, especially for young people. Previous studies have analyzed various factors contributing to car crashes, such as driver behavior, weather, road conditions, and vehicle factors. These analyses have been useful in informing road safety policies and interventions. Moreover, demographic and geographic trends in car crashes have also been identified to develop targeted road safety strategies for specific groups and high-risk areas. With the rise of automated vehicles, research has been conducted to understand their safety and effectiveness by analyzing crash data and conducting simulations.
+
+##** Related Work:**
+A study by Mohamed et al. (2020) titled "A comprehensive analysis of road traffic accidents in Dubai: Trends, patterns, and risk factors." The study analyzed data on road traffic accidents in Dubai over a period of six years (2013-2018) to identify the trends, patterns, and risk factors associated with car crashes. The authors used descriptive statistics, spatial analysis, and regression analysis to analyze the data and identify the contributing factors to car crashes, such as driver behavior, road design, vehicle factors, and weather conditions. The study's findings showed that road traffic accidents were on the rise in Dubai, with young drivers being the most affected group. The study also identified the most common causes of car crashes, including speeding, reckless driving, and lack of attention to road signs and traffic signals.
+
+##**Source:**
+https://www.sciencedirect.com/science/article/pii/S2352146521005792
+Mohamed, M., Al-Mansoori, A., Al-Suwaidi, A., & Al-Ali, M. (2020). A comprehensive analysis of road traffic accidents in Dubai: Trends, patterns, and risk factors. Accident Analysis & Prevention, 135, 105327. doi: 10.1016/j.aap.2019.105327
+
+##**Initial Questions**
+What is the leading cause of deaths in car crashes?
+What are the leading causes of car crashes in a particular area?
+ How do driver behavior, road conditions, and weather contribute to car crashes?
+ How can demographic factors such as age, gender, and socioeconomic status affect car crash rates?
+ What are the geographic trends in car crashes, and which types of roads or intersections are most likely to be involved in crashes?
+ How can car crash data be used to develop targeted road safety strategies for specific demographic groups and high-risk areas?
+We had to consider a new question that coincided with our variables in the data set. In our case, we had variable injy_svty_cd which stood for the injury code on a rank of 1:5. 5 being fatal, and 1 being no sustained injuries. When modeling for this, we needed to create a binary variable, so we had to choose a way to group the 5 factors into two variables. We chose to disperse them into hospitalization and non-hospitalization. This made sense because in the chance of 3:5 there would need to be hospitalization, but 4 and 5 were not as severe injuries which would need no hospitalization. Therefore, Our main question for what the leading cause of death for car crashes had to be changed to what are the causes of hospitalization? We explain how we break apart our variables for analysis in the explanation below. 
+##**Data:**
+Here are each of our variables in the dataset that we focused on:
+injy_svty_cd: Injury severity code, indicating the severity of injuries sustained in 
+the crash.
+crsh_id: Unique identifier for the crash event.
+unit_num: Unit number, identifying the specific vehicle involved in the crash.
+invl_prty_key: Key for the involved party, identifying the driver or owner of the 
+vehicle.
+prty_type: Type of party involved, such as driver or passenger.
+rdwy_area_cd: Code for the roadway area where the crash occurred.
+objectid: Unique identifier for the record.
+rte_no: Route number for the roadway where the crash occurred.
+pr: County or province where the crash occurred.
+mp: Milepost where the crash occurred.
+milt_time: Military time of the crash event.
+num_unit: Number of vehicles involved in the crash.
+crsh_type_cd: Code for the type of crash, such as head-on collision or rear-end 
+collision.
+wthr_cd: Code for the weather conditions at the time of the crash.
+lit_cd: Code for the lighting conditions at the time of the crash.
+rd_cond_cd: Code for the road conditions at the time of the crash.
+num_lns: Number of lanes on the roadway where the crash occurred.
+3
+spd_limt: Speed limit on the roadway where the crash occurred.
+mdot_regn_cd: Code for the regional transportation authority responsible for the 
+roadway where the crash occurred.
+lane_dprt_cd: Code for the lane departure behavior of the involved vehicle.
+vehc_yr: Year of the involved vehicle.
+vehc_dfct_cd: Code for any defects or malfunctions of the involved vehicle.
+prty_age: Age of the involved party.
+rstr_not_used_fail: Whether the involved party was not wearing a seatbelt or using 
+any other safety restraint device.
+gndr_cd: Gender of the involved party.
+hzrd_actn_cd: Code for any hazardous actions or behaviors of the involved party.
+alch_susp_ind: Indicator of whether the involved party was suspected of driving 
+under the influence of alcohol.
+drug_susp_ind: Indicator of whether the involved party was suspected of driving 
+under the influence of drugs.
+year: Year of the crash event.
+traffic_volume: Estimated traffic volume on the roadway where the crash occurred.
+
+
+Now some variables were specifically extracted for analysis, but this was only to limit our predictors and to make more accurate model assumptions. 
+Here we take our excel file and read it into R, then we are selecting the data we want our models to focus on. Finally we remove any of our missing values to ensure that they do not interfere with the model or cause problems in testing and development.  
+```{r}
+
+library(readxl)
+library(tidyverse)
+library(rstanarm)
+#commented out data due to heavy memory and cpu usage
+crashes <- read_excel("C:/Users/Will Wood/Downloads/crashes.xlsx")
+
+#Modeling the probability of a crash resulting in an injury based on defined parameters:
+
+# Subset the data to the relevant variables
+crash_data <- crashes %>% 
+  select(injy_svty_cd, crsh_type_cd, num_lns, spd_limt, gndr_cd, hzrd_actn_cd, alch_susp_ind, drug_susp_ind)
+
+# Remove rows with missing data
+crash_data <- crash_data %>% 
+  drop_na()
+```
+
+Here we breakdown some of our complex variables and standardize them to character vectors we can understand.We changed our initial variable because we noticed that the injury severity code had 5  factors and we needed a binomial variable. Therefore, as mentioned above in questions we altered, we changed the variable to hospitalization. Crash type code had the same type of crash for the direction so we decided to bundle them together to lower the factor number and standardize it to a character vector. Ggplot throws an error if we feed it a continuous variable, so that is why we decided to make speed limit and turn it into a factor. 
+```{r}
+#standardizing our injury severity code to hospitalization
+crashes$hospitalization <- factor(
+ ifelse(crashes$injy_svty_cd %in% c(1, 2, 3), "Hospitalized", "Not hospitalized")
+)
+
+crash_data$hospitalization <- factor(
+ ifelse(crash_data$injy_svty_cd %in% c(1, 2, 3), "Hospitalized", "Not hospitalized")
+)
+
+
+
+#standardizing crash type code
+crash_data$crsh_type_group <- factor(
+ case_when(
+  crash_data$crsh_type_cd == 1 ~ "Single Motor Vehicle",
+  crash_data$crsh_type_cd %in% c(2, 3) ~ "Head-On",
+  crash_data$crsh_type_cd == 4 ~ "Angle",
+  crash_data$crsh_type_cd %in% c(5, 6, 7) ~ "Rear-End",
+  crash_data$crsh_type_cd %in% c(8, 9) ~ "Sideswipe",
+  crash_data$crsh_type_cd == 10 ~ "Other/Unknown"
+ )
+)
+
+#turning speed limit into a factor
+crash_data$spd_limt <- factor(crash_data$spd_limt)
+```
+
+
+
+```{r}
+#visualizing our model
+library(ggplot2)
+library(tidyr)
+
+# Create the heat map
+ggplot(crash_data, aes(crsh_type_cd, spd_limt)) +
+  geom_tile(aes(fill = injy_svty_cd)) +
+  scale_fill_gradient(low = "white", high = "red") +
+  labs(x = "Crash type code", y = "Speed limit", fill = "Injury severity code") +
+  theme_minimal()
+
+#Creating a heat map now for our new variable we created above called "Hospitalization"
+ggplot(crash_data, aes(crsh_type_cd, y = spd_limt)) +
+  geom_tile(aes(fill = hospitalization)) +
+  scale_fill_manual(values = c("white", "red"), na.value = "gray", 
+                    name = "Hospitalization", labels = c("No", "Yes")) +
+  labs(x = "Crash type code", y = "Speed limit") +
+  theme_minimal()
+#Lets combine both of our new variables we created
+ggplot(crash_data, aes(crsh_type_group, y = spd_limt)) +
+  geom_tile(aes(fill = hospitalization)) +
+  scale_fill_manual(values = c("white", "red"), na.value = "gray", 
+                    name = "Hospitalization", labels = c("No", "Yes")) +
+  labs(x = "Crash type code", y = "Speed limit") +
+  theme_minimal()
+
+
+
+
+```
+We tried to graph those two variable we read into R, but the plot was very unclear and crowded, so we had to standardize. Upon doing so we can see a big difference between the first two plots compared to the last. Our final plot shows that the majority of crashes occur with single motor vehicles. In other terms, most of the crashes that occurred were involving one car and we could assume that it was self inflicted. Now lets take a look at driver behavior by analyzing the number of crashes involved with being under the influence of drugs or alcohol. 
+
+```{r}
+#load graphing packages
+library(ggplot2)
+library(ggthemes)
+
+# Box plot of injury severity for crashes involving alcohol
+ggplot(subset(crash_data, alch_susp_ind == 1), aes(x = alch_susp_ind, y = injy_svty_cd)) + 
+  geom_boxplot(fill = "skyblue", color = "black", alpha = 0.5, outlier.shape = NA) +
+  scale_y_continuous(limits = c(0, 6), expand = c(0, 0.05), breaks = seq(0, 6, by = 1),
+                     name = "Injury Severity Code") +
+  labs(title = "Injury Severity for Crashes Involving Alcohol",
+       x = "Alcohol Suspected") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+        axis.title.x = element_text(size = 14, margin = margin(t = 10)),
+        axis.title.y = element_text(size = 14, margin = margin(r = 10)),
+        axis.text = element_text(size = 12),
+        panel.grid = element_blank(),
+        panel.border = element_rect(fill = NA, color = "black", size = 0.5),
+        legend.position = "none")
+
+
+
+# Box plot of injury severity for crashes involving drugs
+ggplot(subset(crash_data, drug_susp_ind == 1), aes(x = drug_susp_ind, y = injy_svty_cd)) + 
+  geom_boxplot(fill = "palegreen4", color = "black", alpha = 0.5, outlier.shape = NA) +
+  scale_y_continuous(limits = c(0, 6), expand = c(0, 0.05), breaks = seq(0, 6, by = 1),
+                     name = "Injury Severity Code") +
+  labs(title = "Injury Severity for Crashes Involving Drugs",
+       x = "Drug Suspected") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+        axis.title.x = element_text(size = 14, margin = margin(t = 10)),
+        axis.title.y = element_text(size = 14, margin = margin(r = 10)),
+        axis.text = element_text(size = 12),
+        panel.grid = element_blank(),
+        panel.border = element_rect(fill = NA, color = "black", size = 0.5))
+
+
+
+```
+We can see our driver behavior while under the influence of drugs or alcohol is a major cause of disability and death. We can base this off of the box plot showing at least 75% of the crashes involved with alcohol ended with injury severity code of 4 and 5. When we plot injury severity for under the influence of drugs we can see that the injury severity code is stretched between code 3,4,and 5. Therefore, we can make the claim that the majority of crashes under the influence end in severe injuries. However, it is important to note that being under the influence of drugs showed less severity compared to under the influence of alcohol. This could be for several extraneous factors, but we can't deny the range for severity while being under the influence of drugs. 
+
+
+Next we can take a look at our demographic of drivers. We plot the age of drivers under the influence of alcohol or drugs. Our crashes data contains prty_age so we use that data set instead of crash_data. 
+
+```{r}
+
+# Create a subset of the data for crashes involving alcohol or drugs
+alcohol_data <- subset(crashes, alch_susp_ind == 1)
+drug_data <- subset(crashes, drug_susp_ind == 1)
+
+# Create a histogram of the age distribution for each group
+ggplot() +
+  geom_histogram(data = alcohol_data, aes(x = prty_age, fill = "Alcohol"), 
+                 alpha = 0.7, binwidth = 5) +
+  geom_histogram(data = drug_data, aes(x = prty_age, fill = "Drug"), 
+                 alpha = 0.7, binwidth = 5) +
+  scale_fill_manual(values = c("Alcohol" = "skyblue", "Drug" = "orange")) +
+  labs(title = "Age Distribution of Drivers Involved in Crashes with Alcohol or Drugs",
+       x = "Age", y = "Count") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+        axis.title.x = element_text(size = 14, margin = margin(t = 10)),
+        axis.title.y = element_text(size = 14, margin = margin(r = 10)),
+        axis.text = element_text(size = 12),
+        panel.grid = element_blank(),
+        panel.border = element_rect(fill = NA, color = "black", size = 0.5))
+
+```
+
+Based on our plot here we can see overall the usage of alcohol while operating a vehicle is higher than the use of drugs while driving. Secondly, we can see that our range of ages for drivers under the influence sits between about ages 25-40. Lets see if we can find out a little bit more about our demographic when it comes to crashing while under the influence. 
+
+Now lets simply compare the proportion of crashes involving men and women. We can create a bar chart showing the count of crashes by gender.
+
+```{r}
+ggplot(crashes, aes(x = gndr_cd, fill = gndr_cd)) +
+  geom_bar() +
+  labs(title = "Number of Crashes by Gender",
+       x = "Gender",
+       y = "Count") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+        axis.title.x = element_text(size = 14, margin = margin(t = 10)),
+        axis.title.y = element_text(size = 14, margin = margin(r = 10)),
+        axis.text = element_text(size = 12),
+        panel.grid = element_blank(),
+        panel.border = element_rect(fill = NA, color = "black", size = 0.5),
+        legend.position = "none")
+```
+
+
+
+This simple chart lets us know that the majority of crashes were involved with males and not females.
+```{r}
+#making sure we drop our NA values with crashes dataset
+crashes <- na.omit(crashes)
+table(crashes$gndr_cd)
+# Create a subset of data with only the relevant variables
+sub_data <- subset(crashes, select = c(gndr_cd, prty_age, alch_susp_ind, drug_susp_ind))
+
+# Create a new variable to specify whether the crash involves alcohol or drugs
+sub_data$substance <- ifelse(sub_data$alch_susp_ind == "Yes", "Alcohol", 
+                              ifelse(sub_data$drug_susp_ind == "Yes", "Drug", "None"))
+
+# Create a stacked bar chart with gender and substance by age
+ggplot(sub_data, aes(x = prty_age, fill = gndr_cd)) +
+  geom_bar(position = "stack") +
+  facet_wrap(~ substance, ncol = 2, scales = "free_y") +
+  labs(title = "Gender and Substance Use by Age",
+       x = "Age",
+       y = "Count",
+       fill = "Gender",
+       subtitle = "Alcohol and Drug Use Suspected") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+        axis.title.x = element_text(size = 14, margin = margin(t = 10)),
+        axis.title.y = element_text(size = 14, margin = margin(r = 10)),
+        axis.text = element_text(size = 12),
+        panel.grid = element_blank(),
+        panel.border = element_rect(fill = NA, color = "black", size = 0.5),
+        legend.position = "bottom")
+
+```
+Now after seeing the stacked bar chart, the chart explains that more crashes involved woman under the influence of a substance compared to males. We still continue to see the spike in substance use involved with the crash at the ages 25-30 for males and females. It's important to note that correlation does not necessarily imply causation, but the information we have provided suggests that there may be a relationship between age, gender, and substance use in relation to car crashes. It may be worth exploring this further with additional data and analysis. We also have to note that we established our population holds more males than females, so it is interesting to see that there were more crashes involved with woman when considering the population under the influence.  
+
+We tried creating a grouped bar chart to compare the number of crashes involving alcohol and drugs for each gender within each age group. This would allow for a clearer comparison between the two substances and how they relate to gender and age.
+```{r}
+# Create a subset of data with only the relevant variables
+sub_data <- subset(crashes, select = c(gndr_cd, prty_age, alch_susp_ind, drug_susp_ind))
+
+# Remove rows with missing data
+sub_data <- na.omit(sub_data)
+
+# Convert binary variables to factors
+sub_data$alch_susp_ind <- factor(sub_data$alch_susp_ind, labels = c("No", "Yes"))
+sub_data$drug_susp_ind <- factor(sub_data$drug_susp_ind, labels = c("No", "Yes"))
+
+# Create a grouped bar chart
+ggplot(sub_data, aes(x = prty_age, fill = gndr_cd)) +
+  geom_bar(data = subset(sub_data, alch_susp_ind == "Yes"), aes(y = ..count../sum(..count..)), position = "dodge", alpha = 0.5) +
+  geom_bar(data = subset(sub_data, drug_susp_ind == "Yes"), aes(y = ..count../sum(..count..)), position = "dodge", alpha = 0.5) +
+  labs(title = "Substance Use in Crashes by Age and Gender",
+       x = "Age",
+       y = "Proportion of Crashes",
+       fill = "Gender",
+       subtitle = "Alcohol and Drug Use Suspected") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+        axis.title.x = element_text(size = 14, margin = margin(t = 10)),
+        axis.title.y = element_text(size = 14, margin = margin(r = 10)),
+        axis.text = element_text(size = 12),
+        panel.grid = element_blank(),
+        panel.border = element_rect(fill = NA, color = "black", size = 0.5),
+        legend.position = "bottom")
+
+```
+Our shaded regions indicate that no substance was involved with the crash. We can see that no use is higher for the population of crashes with woman, but for men it is about equal. We have to remember that this is different to comparison of substance use while driving between men and woman. Our population is lower for woman compared to men, so again we cannot make the assumption that woman are involved in more crashes. However, we can say that in the population of substance abuse related crashes,there was more woman under the influence. 
+
+Lets look at more data concerning speed limit with gender. Our data has speed_limits that aren't actual speed limits, so we need to get rid of them. 
+```{r}
+# Create a heatmap for gndr_cd
+speed_data <- subset(crash_data, spd_limt %in% c(10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 90))
+
+
+ggplot(speed_data, aes(gndr_cd, y = spd_limt)) +
+  geom_tile(aes(fill = injy_svty_cd)) +
+  scale_fill_gradient(low = "blue", high = "pink") +
+  labs(x = "Gender code", y = "Speed limit", fill = "Injury severity code") +
+  theme_minimal()
+
+```
+
+Our plot shows us that women suffered fatalities at every speed limit besides 25mph, 35mph,and 55mph. Men on the other hand suffered fatalities at every speed besides 45mph, 55mph, 60mph, and 65mph. 
+
+
+We have talked enough about demographic data and we have learned a lot, so lets focus now on geographical data. Where do we see the majority of crashes occurring. We have our regions of Michigan split by MDOT locations. 
+0 | Statewide Multi-Region
+1 | Superior
+2 | North
+3 | Grand
+4 | Bay
+5 | Southwest
+6 | University
+7 | Metro
+```{r}
+
+library(dplyr)
+
+# Recode mdot_regn_cd
+crashes <- crashes %>%
+  mutate(mdot_regn_cd = recode(mdot_regn_cd, 
+                               `0` = "Statewide Multi-Region",
+                               `1` = "Superior",
+                               `2` = "North",
+                               `3` = "Grand",
+                               `4` = "Bay",
+                               `5` = "Southwest",
+                               `6` = "University",
+                               `7` = "Metro"))
+
+# Count the number of crashes in each MDOT region
+crash_count <- crashes %>%
+  group_by(mdot_regn_cd) %>%
+  summarize(n = n())
+
+# Create a bar plot
+ggplot(crash_count, aes(x = mdot_regn_cd, y = n)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  labs(x = "MDOT Region", y = "Number of Crashes") +
+  ggtitle("Crashes by MDOT Region in Michigan")
+
+
+```
+From the bar graph, we can say that the Metro MDOT region has the highest number of crashes among all the MDOT regions in Michigan. However, we cannot make any further conclusions without additional information or analysis. For example, we do not know the population or traffic volume of each region, which could impact the crash frequency. Additionally, we do not know the cause or severity of the crashes in each region, which could also provide further insights. So, Lets incorporate traffic volume to see if that is the reason for our crashes occurring in the metro region. 
+
+
+
+```{r}
+# Create a data frame with the traffic volume and crash frequency for each MDOT region code
+traffic_crash_df <- crashes %>%
+  group_by(mdot_regn_cd) %>%
+  summarize(traffic_volume = mean(traffic_volume, na.rm = TRUE), 
+            crash_freq = n())
+
+# Create the bar graph with two y-axes
+ggplot(traffic_crash_df, aes(x = mdot_regn_cd)) +
+  geom_col(aes(y = traffic_volume), fill = "#0A8A9F") +
+  geom_line(aes(y = crash_freq*1000, group = 1), color = "#FF7F0E", size = 1.5) +
+  geom_point(aes(y = crash_freq*1000), color = "#FF7F0E", size = 2.5) +
+  scale_y_continuous(name = "Traffic Volume", 
+                     sec.axis = sec_axis(~./1000, name = "Crash Frequency (x1000)")) +
+  labs(title = "Traffic Volume and Crash Frequency by MDOT Region Code", 
+       x = "MDOT Region Code") +
+  theme_bw()
+```
+Metro still holding the highest traffic volume was a great indicator, but lets try to include more variables that could surely help our case. 
+Lets also incorporate weather:
+```{r}
+# Create a new data frame with counts of crashes by mdot region and weather condition
+crashes_by_region_weather <- crashes %>%
+  group_by(mdot_regn_cd, wthr_cd) %>%
+  summarize(num_crashes = n())
+
+# Create the plot
+ggplot(crashes_by_region_weather, aes(x = mdot_regn_cd, y = num_crashes, fill = factor(wthr_cd))) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Number of Crashes by MDOT Region and Weather Condition",
+       x = "MDOT Region", y = "Number of Crashes", fill = "Weather Condition") +
+  scale_fill_discrete(name = "Weather Condition",
+                      labels = c("Clear", "Rain", "Snow", "Sleet/Hail/Freezing Rain", "Fog/Smog/Smoke", "Severe Crosswinds", "Blowing Snow", "Other/Unknown"))
+```
+
+Even the metro region shows higher crash rate in all weather categories compared to the other regions. Again we see the highest traffic volume and highest weather conditions. However, we cannot make the assumption because the majority of the population for crashes resided in the metro region. 
+
+
+
+
+
+Lets build a model to see if weather, light, and road conditions are predictors of hospitalization. 
+```{r}
+model <- glm(hospitalization ~ wthr_cd + lit_cd + rd_cond_cd, data = crashes, family = binomial)
+summary(model)
+
+```
+The Deviance Residuals show the difference between the predicted values and the observed values of the outcome variable. The residuals range from -2.76 to 0.32, with most of the residuals falling within the range of 0.26 to 0.28, which indicates that the model is generally accurate in predicting the outcome. The Coefficients table shows the estimated regression coefficients for each predictor variable. The Intercept is the predicted log odds of hospitalization when all predictors are equal to 0. The estimates of the coefficients of weather, lighting, and road conditions are 0.033024, -0.073013, and 0.038644, respectively. The z-value and p-value columns show the statistical significance of each predictor variable. All three predictors are statistically significant in predicting the outcome, as their p-values are less than 0.05.
+
+Plot the model with the data:
+```{r}
+
+# create a scatter plot of the data with hospitalization on the y-axis and the predictor variables on the x-axis
+ggplot(crashes, aes(x = factor(wthr_cd), y = hospitalization)) +
+  # add points to the plot
+  geom_point(aes(color = rd_cond_cd)) +
+  # add a linear regression line with 95% confidence intervals
+  geom_smooth(aes(color = rd_cond_cd), method = "glm", method.args = list(family = "binomial"), se = TRUE) +
+  # create separate plots for each value of lit_cd
+  facet_wrap(~ lit_cd, ncol = 3)
+
+```
+
+Our lighting conditions ranked 1:6 1 being light and 6 being dark, we can see that the majority of the crashes at night that resulted in hospitalization were involved with debris. Most of the hospitalization of crashes that occurred in daytime(1:3) were due to road conditions being between 2:4, which were icy, wet, and muddy conditions. It's impossible for us to control the weather, but clearly that seems to play a big factor in hospitalization. 
+
+
+Clustering would be an apporpriate statistical method for us to use with the data, so lets try it!
+
+```{r}
+#converting hospital to a numeric variable to cluster
+crashes$hospitalization <- as.numeric(crashes$hospitalization)
+# Subset the data to the relevant columns
+crashes_subset <- crashes[, c("spd_limt", "hospitalization")]
+
+# Scale the data
+crashes_scaled <- scale(crashes_subset)
+
+# Determine the optimal number of clusters using the elbow method
+wss <- c()
+for(i in 1:10) {
+  kmeans_model <- kmeans(crashes_scaled, centers = i, nstart = 25)
+  wss[i] <- kmeans_model$tot.withinss
+}
+plot(1:10, wss, type = "b", pch = 19, frame = FALSE, xlab = "Number of Clusters",
+     ylab = "Total Within Sum of Squares")
+
+# Fit the k-means model with the chosen number of clusters (in this case, 3)
+kmeans_model <- kmeans(crashes_scaled, centers = 3, nstart = 25)
+
+# Add the cluster labels to the original data
+crashes_subset$cluster <- kmeans_model$cluster
+
+# View the cluster centers
+kmeans_model$centers
+
+# View a summary of the clusters
+library(dplyr)
+crashes_summary <- crashes_subset %>%
+  group_by(cluster) %>%
+  summarize(
+    n = n(),
+    mean_speed = mean(spd_limt),
+    pct_hospitalized = mean(hospitalization) * 100
+  )
+crashes_summary
+
+```
+
+This code clustered the data based on the speed limit and whether or not hospitalization occurred (with values of 1 indicating hospitalization and 0 indicating no hospitalization). The code also uses the elbow method to determine the optimal number of clusters (in this case, 3), adds the cluster labels to the original data, and calculates the mean speed limit and percentage of hospitalizations for each cluster.Based on our output there are three distinct groups of crashes based on the speed limit and hospitalization rates. Cluster 1 has the highest mean speed limit of 70 mph and the highest percentage of crashes resulting in hospitalization at 200%, indicating that there were more than two people hospitalized per crash. Cluster 2 has a slightly lower speed limit of 67 mph and a 100% hospitalization rate, indicating that every crash resulted in hospitalization. Cluster 3 has the lowest mean speed limit of 54 mph and a hospitalization rate close to that of cluster 1 at 199.99%, indicating that many crashes in this cluster also resulted in hospitalization.
+
+
+
+Focusing on statistical methods we can do time series analysis for our crashes that have occurred over the years. 
+```{r}
+#time series plot of number of crashes per year
+crashes_ts <- ts(crashes$crsh_id, start = c(min(crashes$year)), end = c(max(crashes$year)), frequency = 1)
+plot(crashes_ts, xlab = "Year", ylab = "Number of Crashes", main = "Time Series of Crashes by Year")
+
+
+library(forecast)
+
+# Generate ARIMA model using auto.arima()
+model <- auto.arima(crashes_ts)
+
+# Print the model summary
+summary(model)
+
+```
+
+The time series model being used is an ARIMA(0,1,0) model. This means that the model includes no auto regressive (AR) terms, one difference (I) term, and no moving average (MA) terms. The fact that there is one difference term suggests that the series needed to be differenced once in order to be stationary. The log likelihood of the model is (-29.28). A lower log likelihood would indicate a better-fitting model, but in this case the value is quite close to zero, which suggests that the model is not a great fit for the data.The AICc is similar to the AIC but is adjusted for small sample sizes, while the BIC is a more stringent criterion that penalizes models with more parameters.ME is the mean error, RMSE is the root mean squared error, MAE is the mean absolute error, MPE is the mean percentage error, MAPE is the mean absolute percentage error, and MASE is the mean absolute scaled error. ACF1 is the first autocorrelation coefficient of the residuals, which should ideally be close to zero to indicate that there is no remaining autocorrelation in the residuals. In this case, the ACF1 value is negative and small in magnitude, which suggests that the residuals may be slightly negatively auto correlated. Overall, the error measures suggest that the model is not a very good fit to the data, as the RMSE and MAPE are quite high.
+
+Trying different time series models to see which one is the best.
+
+```{r}
+# Fit the models
+model1 <- arima(crashes_ts, order = c(1,0,0))
+model2 <- arima(crashes_ts, order = c(0,1,1))
+model3 <- arima(crashes_ts, order = c(1,1,1))
+
+# Extract the AIC and BIC values from each model
+AIC <- c(AIC(model1), AIC(model2), AIC(model3))
+BIC <- c(BIC(model1), BIC(model2), BIC(model3))
+
+# Create a table of the AIC and BIC values
+table <- data.frame(Model = c("AR(1)", "MA(1)", "ARMA(1,1)"), AIC = AIC, BIC = BIC)
+rownames(table) <- NULL
+
+# Print the table
+print(table)
+
+```
+Our output here shows that model2 might be our best option because we can see that is his the lowest value for AIC which means its the best fit. Let's try forecasting to see if we can compare the models visually. 
+
+```{r}
+library(forecast)
+# Define the time series object
+crashes_ts <- ts(crashes$crsh_id, start = c(min(crashes$year)), end = c(max(crashes$year)), frequency = 1)
+
+# Fit the ARIMA(2,1,2) model
+model_arima <- Arima(crashes_ts, order = c(2,1,2), include.drift = TRUE)
+
+# Generate forecasts for the next 2 years
+forecast_arima <- forecast(model_arima, h = 2)
+
+# Plot the actual and forecasted values
+autoplot(crashes_ts) + 
+  autolayer(fitted(model_arima), series = "Fitted Values") + 
+  autolayer(forecast_arima$mean, series = "Forecasted Values") + 
+  xlab("Year") + ylab("Number of Crashes") + ggtitle("Actual and Forecasted Values of Crashes by Year")
+
+
+```
+
+Our forecasted models predict the number of crashes to increase. We cannot deny this implication because we can clearly see from our time series plot that the number of crashes has increased from 2010 exponentially. 
+
+##**Data Analysis**
+The first method used is the ARIMA(2,1,2) time series modeling to forecast the number of crashes for the next two years. ARIMA is a popular method for time series analysis, which stands for Autoregressive Integrated Moving Average. The model uses previous observations and lagged values of the time series to predict future values. The ARIMA model is widely used for economic forecasting, but it can also be applied to various other fields. In this case, the purpose of the ARIMA model is to predict the future number of crashes based on past trends and seasonality.
+
+The second method used is k-means clustering analysis. Clustering analysis is an unsupervised learning method that groups similar data points into clusters. K-means is a popular method for clustering analysis that divides the data into k clusters based on the Euclidean distance between each observation and its nearest cluster center. The purpose of clustering analysis is to identify patterns and structures within the data that may not be apparent at first glance. In this case, the purpose of k-means clustering is to group similar crashes based on their speed limit and the proportion of hospitalizations.
+
+Another statistical method used in this code is the generalized linear model (GLM) with a binomial family to examine the relationship between hospitalizations and weather conditions, lighting conditions, and road conditions. GLM is a generalization of the linear regression model, which allows for non-normal distributions of the dependent variable. In this case, the binomial family is chosen because hospitalization is a binary variable (either hospitalized or not). The purpose of the GLM is to determine the effect of weather, lighting, and road conditions on the likelihood of hospitalization.
+
+Other potential methods that could be used include time series analysis using other models such as exponential smoothing or moving averages. Clustering analysis could also be performed using other methods such as hierarchical clustering or density-based clustering. Additionally, other models for binary outcomes such as logistic regression could be used instead of the GLM. We made our choices relative to the questions we had about the data, so in the end we could've picked apart this entire data set to answer more questions. 
+
+##**Narrative and Summary**
+Based on our data analysis, the leading cause of deaths in car crashes appears to be driver behavior, specifically driving under the influence of drugs or alcohol. The majority of crashes involving alcohol or drugs resulted in injury severity codes of 4 or 5, indicating severe injuries. The use of alcohol while operating a vehicle appears to be more common than the use of drugs while driving. Additionally, crashes involving substance use appear to be more common among drivers aged 25-40 and among women.In terms of demographic factors, the analysis suggests that there may be a relationship between age, gender, and substance use in relation to car crashes. More crashes involving substance use were reported among women, but it's important to consider that the population of crashes involving women was lower overall. Geographically, the Metro MDOT region appears to have the highest number of crashes among all the MDOT regions in Michigan, and this is primarily due to it being the highest in traffic volume. Traffic volume and weather conditions also appear to be contributing factors to car crashes, with the highest crash rates occurring during nighttime and in adverse weather conditions such as icy, wet, and muddy roads.
+
+There are 5 limitations to this data set:
+The analyses were based on a specific data set and may not be representative of the entire population. Additional data from different regions and time periods could provide more insights and a more accurate representation of car crashes. Some of the analyses are based on correlations between variables, but correlation does not necessarily imply causation. Therefore, it is important to be cautious when making conclusions based on the analyses. The analyses do not take into account other potential factors that could contribute to car crashes, such as vehicle safety features, road infrastructure, and law enforcement efforts. Some of the analyses lack information about the severity or cause of the crashes, which could provide more insights into the leading causes of car crashes and how to develop targeted road safety strategies. The data set has missing values which could potentially affect the accuracy of the results.
+
+Overall, car crash data can be used to develop targeted road safety strategies for specific demographic groups and high-risk areas. This could include increased enforcement of laws related to driving under the influence, improved road infrastructure, and targeted public education campaigns.
+
